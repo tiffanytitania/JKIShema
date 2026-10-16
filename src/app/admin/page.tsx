@@ -386,7 +386,7 @@ export default function AdminDashboardPage() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {p.status === 'REGISTERED' ? (
+                        {p.status === 'REGISTERED' && (
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => handleOpenCheckInModal(p)}
@@ -401,10 +401,6 @@ export default function AdminDashboardPage() {
                               Batalkan
                             </button>
                           </div>
-                        ) : (
-                          <span className="font-mono text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded">
-                            {p.qr_token.slice(0, 8)}...
-                          </span>
                         )}
                       </td>
                     </tr>

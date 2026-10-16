@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { Html5Qrcode } from 'html5-qrcode'
+import { Html5Qrcode, Html5QrcodeScannerState } from 'html5-qrcode'
 
 interface ScanResult {
   resultCode: 'SUCCESS' | 'ALREADY_CHECKED_IN' | 'INVALID_TOKEN' | 'CANCELLED'
@@ -16,6 +16,11 @@ export default function QRScannerPage() {
   const [scanning, setScanning] = useState(false)
   const [scannerError, setScannerError] = useState('')
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null)
+  const isProcessingRef = useRef(false)
+  const resumeTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const startPromiseRef = useRef<Promise<any> | null>(null)
+  const isCleaningUpRef = useRef<boolean>(false)
+  const isMountedRef = useRef<boolean>(false)
 
   // Device check (smartphone check)
   useEffect(() => {
@@ -35,30 +40,108 @@ export default function QRScannerPage() {
   useEffect(() => {
     if (!isMobile) return
 
-    const qrCodeId = 'qr-reader'
-    const html5Qrcode = new Html5Qrcode(qrCodeId)
-    html5QrcodeRef.current = html5Qrcode
+    isMountedRef.current = true
+    let isCancelled = false
+
+    // Intercept HTMLVideoElement.prototype.play to handle AbortError when interrupted by cleanup
+    const originalPlay = HTMLVideoElement.prototype.play
+    HTMLVideoElement.prototype.play = function (...args) {
+      const playPromise = originalPlay.apply(this, args)
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((err) => {
+          // Playback was aborted because tracks were stopped or element was removed during cleanup
+          if (err?.name === 'AbortError') {
+            return
+          }
+          throw err
+        })
+      }
+      return playPromise
+    }
+
+    // Scoped unhandled rejection listener specifically for intentional cleanup AbortErrors
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const isAbort =
+        reason?.name === 'AbortError' ||
+        reason?.message?.includes('The operation was aborted') ||
+        reason?.message?.includes('The play() request was interrupted') ||
+        String(reason).includes('AbortError')
+
+      if (isAbort && isCleaningUpRef.current) {
+        event.preventDefault()
+      }
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+
+    const cleanupPreviousScanner = async () => {
+      isCleaningUpRef.current = true
+      try {
+        if (startPromiseRef.current) {
+          try {
+            await startPromiseRef.current
+          } catch (_) {}
+          startPromiseRef.current = null
+        }
+
+        const scanner = html5QrcodeRef.current
+        if (scanner) {
+          html5QrcodeRef.current = null
+          try {
+            const state = scanner.getState()
+            if (
+              state === Html5QrcodeScannerState.SCANNING ||
+              state === Html5QrcodeScannerState.PAUSED
+            ) {
+              await scanner.stop()
+            }
+          } catch (e) {
+            console.warn('Error stopping scanner during cleanup:', e)
+          } finally {
+            try {
+              scanner.clear()
+            } catch (_) {}
+          }
+        }
+      } finally {
+        isCleaningUpRef.current = false
+      }
+    }
 
     const startScanner = async () => {
+      // Synchronize: Wait for any previous scanner instance to completely finish shutting down
+      await cleanupPreviousScanner()
+
+      if (isCancelled || !isMountedRef.current) return
+
+      const qrCodeId = 'qr-reader'
+      const html5Qrcode = new Html5Qrcode(qrCodeId)
+      html5QrcodeRef.current = html5Qrcode
+
       try {
         setScanning(true)
         setScannerError('')
 
         // 1. Check for Secure Context (HTTPS or localhost)
         if (typeof window !== 'undefined' && window.isSecureContext === false) {
-          setScannerError('Kamera memerlukan koneksi aman (HTTPS). Akses website menggunakan URL HTTPS (https://) agar browser mengizinkan akses kamera.')
-          setScanning(false)
+          if (!isCancelled && isMountedRef.current) {
+            setScannerError('Kamera memerlukan koneksi aman (HTTPS). Akses website menggunakan URL HTTPS (https://) agar browser mengizinkan akses kamera.')
+            setScanning(false)
+          }
           return
         }
 
         // 2. Check for getUserMedia API support
         if (!navigator.mediaDevices?.getUserMedia) {
-          setScannerError('Browser ini tidak mendukung akses kamera atau fitur kamera diblokir karena koneksi belum aman (HTTPS).')
-          setScanning(false)
+          if (!isCancelled && isMountedRef.current) {
+            setScannerError('Browser ini tidak mendukung akses kamera atau fitur kamera diblokir karena koneksi belum aman (HTTPS).')
+            setScanning(false)
+          }
           return
         }
 
-        await html5Qrcode.start(
+        const startPromise = html5Qrcode.start(
           { facingMode: 'environment' },
           {
             fps: 10,
@@ -67,7 +150,44 @@ export default function QRScannerPage() {
           onScanSuccess,
           onScanFailure
         )
+
+        startPromiseRef.current = startPromise
+
+        await startPromise
+
+        // If component was unmounted or cancelled while start() was pending
+        if (isCancelled || !isMountedRef.current) {
+          isCleaningUpRef.current = true
+          try {
+            const state = html5Qrcode.getState()
+            if (
+              state === Html5QrcodeScannerState.SCANNING ||
+              state === Html5QrcodeScannerState.PAUSED
+            ) {
+              await html5Qrcode.stop()
+            }
+          } catch (e) {
+            console.warn('Error stopping scanner after cancelled start:', e)
+          } finally {
+            try {
+              html5Qrcode.clear()
+            } catch (_) {}
+            isCleaningUpRef.current = false
+          }
+        }
       } catch (err: any) {
+        const isAbort =
+          err?.name === 'AbortError' ||
+          err?.message?.includes('The operation was aborted') ||
+          err?.message?.includes('AbortError') ||
+          String(err).includes('AbortError')
+
+        // If cancelled by intentional cleanup, treat AbortError as expected cancellation
+        if (isCancelled || !isMountedRef.current) {
+          if (isAbort) return
+          return
+        }
+
         setScanning(false)
         const errMsg = err?.message || String(err)
         const errName = err?.name || ''
@@ -94,31 +214,57 @@ export default function QRScannerPage() {
         } else {
           setScannerError(`Gagal mengakses kamera: ${errMsg || 'Pastikan izin kamera telah diberikan.'}`)
         }
+      } finally {
+        startPromiseRef.current = null
       }
     }
 
     startScanner()
 
     return () => {
-      if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
-        html5QrcodeRef.current.stop().catch(console.error)
+      isCancelled = true
+      isMountedRef.current = false
+
+      if (resumeTimerRef.current) {
+        clearTimeout(resumeTimerRef.current)
+        resumeTimerRef.current = null
       }
+      isProcessingRef.current = false
+
+      // Restore original play function and remove listener
+      HTMLVideoElement.prototype.play = originalPlay
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+
+      cleanupPreviousScanner()
     }
   }, [isMobile])
 
   const onScanSuccess = async (decodedText: string) => {
-    // Pause scanning temporarily
-    if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
-      html5QrcodeRef.current.pause()
+    // Prevent duplicate handling if already processing or paused
+    if (isProcessingRef.current) {
+      return
     }
+    isProcessingRef.current = true
 
-    // Extract token if it's a URL or raw string
-    let token = decodedText.trim()
-    if (token.includes('/ticket/')) {
-      token = token.split('/ticket/').pop()?.split('?')[0]?.split('#')[0]?.replace(/\/$/, '') || token
+    // Pause scanning safely only when strictly in SCANNING state
+    const scanner = html5QrcodeRef.current
+    if (scanner) {
+      try {
+        if (scanner.getState() === Html5QrcodeScannerState.SCANNING) {
+          scanner.pause()
+        }
+      } catch (err) {
+        console.warn('Unable to pause scanner:', err)
+      }
     }
 
     try {
+      // Extract token if it's a URL or raw string
+      let token = decodedText.trim()
+      if (token.includes('/ticket/')) {
+        token = token.split('/ticket/').pop()?.split('?')[0]?.split('#')[0]?.replace(/\/$/, '') || token
+      }
+
       const res = await fetch('/api/admin/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -132,19 +278,30 @@ export default function QRScannerPage() {
         message: 'Gagal menghubungi server.',
         participant: null,
       })
-    }
-
-    // Auto resume scanner after 3 seconds
-    setTimeout(() => {
-      setScanResult(null)
-      if (html5QrcodeRef.current) {
-        try {
-          html5QrcodeRef.current.resume()
-        } catch (e) {
-          console.error(e)
-        }
+    } finally {
+      // Auto resume scanner after 3.2 seconds
+      if (resumeTimerRef.current) {
+        clearTimeout(resumeTimerRef.current)
       }
-    }, 3200)
+
+      resumeTimerRef.current = setTimeout(() => {
+        setScanResult(null)
+        const currentScanner = html5QrcodeRef.current
+        if (currentScanner) {
+          try {
+            if (currentScanner.getState() === Html5QrcodeScannerState.PAUSED) {
+              currentScanner.resume()
+            }
+          } catch (e) {
+            console.warn('Unable to resume scanner:', e)
+          } finally {
+            isProcessingRef.current = false
+          }
+        } else {
+          isProcessingRef.current = false
+        }
+      }, 3200)
+    }
   }
 
   const onScanFailure = () => {
