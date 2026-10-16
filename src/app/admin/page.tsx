@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
+import AdminConfirmModal, { ConfirmModalAction } from '@/components/AdminConfirmModal'
 
 interface Stats {
   totalCapacity: number
@@ -73,59 +74,82 @@ export default function AdminDashboardPage() {
     fetchParticipants()
   }, [fetchStats, fetchParticipants])
 
-  const handleManualCheckIn = async (participantId: string, name: string) => {
-    if (!confirm(`Apakah Anda yakin ingin melakukan Manual Check-In untuk "${name}"?`)) {
-      return
-    }
+  const [activeModal, setActiveModal] = useState<{
+    action: ConfirmModalAction
+    participant: Participant
+  } | null>(null)
+  const [modalLoading, setModalLoading] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
 
-    try {
-      const res = await fetch('/api/admin/checkin', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participant_id: participantId }),
-      })
-
-      if (res.ok) {
-        setActionMsg(`✓ Manual Check-in berhasil untuk ${name}!`)
-        fetchStats()
-        fetchParticipants()
-        setTimeout(() => setActionMsg(''), 4000)
-      } else {
-        const data = await res.json()
-        alert(`Gagal: ${data.error}`)
-      }
-    } catch (err: any) {
-      alert(`Error: ${err.message}`)
-    }
+  const handleOpenCheckInModal = (participant: Participant) => {
+    setModalError(null)
+    setActiveModal({ action: 'CHECK_IN', participant })
   }
 
-  const handleCancelParticipant = async (participantId: string, name: string) => {
-    if (
-      !confirm(
-        `Apakah Anda yakin ingin membatalkan pendaftaran untuk "${name}"?\n\nKuota pendaftaran online akan otomatis dipulihkan kembali.`
-      )
-    ) {
-      return
-    }
+  const handleOpenCancelModal = (participant: Participant) => {
+    setModalError(null)
+    setActiveModal({ action: 'CANCEL', participant })
+  }
 
-    try {
-      const res = await fetch('/api/admin/participants', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participant_id: participantId }),
-      })
+  const handleCloseModal = () => {
+    if (modalLoading) return
+    setActiveModal(null)
+    setModalError(null)
+  }
 
-      if (res.ok) {
-        setActionMsg(`✓ Pendaftaran "${name}" berhasil dibatalkan! Kuota telah dipulihkan.`)
-        fetchStats()
-        fetchParticipants()
-        setTimeout(() => setActionMsg(''), 4000)
-      } else {
-        const data = await res.json()
-        alert(`Gagal: ${data.error}`)
+  const handleConfirmModalAction = async () => {
+    if (!activeModal || modalLoading) return
+    const { action, participant } = activeModal
+
+    setModalLoading(true)
+    setModalError(null)
+
+    if (action === 'CHECK_IN') {
+      try {
+        const res = await fetch('/api/admin/checkin', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participant_id: participant.id }),
+        })
+
+        if (res.ok) {
+          setActiveModal(null)
+          setActionMsg(`✓ Manual Check-in berhasil untuk ${participant.full_name}!`)
+          fetchStats()
+          fetchParticipants()
+          setTimeout(() => setActionMsg(''), 4000)
+        } else {
+          const data = await res.json()
+          setModalError(data.error || 'Gagal melakukan check-in manual.')
+        }
+      } catch (err: any) {
+        setModalError(err.message || 'Terjadi kesalahan sistem saat check-in manual.')
+      } finally {
+        setModalLoading(false)
       }
-    } catch (err: any) {
-      alert(`Error: ${err.message}`)
+    } else if (action === 'CANCEL') {
+      try {
+        const res = await fetch('/api/admin/participants', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participant_id: participant.id }),
+        })
+
+        if (res.ok) {
+          setActiveModal(null)
+          setActionMsg(`✓ Pendaftaran "${participant.full_name}" berhasil dibatalkan! Kuota telah dipulihkan.`)
+          fetchStats()
+          fetchParticipants()
+          setTimeout(() => setActionMsg(''), 4000)
+        } else {
+          const data = await res.json()
+          setModalError(data.error || 'Gagal membatalkan pendaftaran peserta.')
+        }
+      } catch (err: any) {
+        setModalError(err.message || 'Terjadi kesalahan sistem saat membatalkan pendaftaran.')
+      } finally {
+        setModalLoading(false)
+      }
     }
   }
 
@@ -365,14 +389,14 @@ export default function AdminDashboardPage() {
                         {p.status === 'REGISTERED' ? (
                           <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={() => handleManualCheckIn(p.id, p.full_name)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow transition"
+                              onClick={() => handleOpenCheckInModal(p)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow transition cursor-pointer"
                             >
                               Check-In Manual
                             </button>
                             <button
-                              onClick={() => handleCancelParticipant(p.id, p.full_name)}
-                              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg shadow transition"
+                              onClick={() => handleOpenCancelModal(p)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg shadow transition cursor-pointer"
                             >
                               Batalkan
                             </button>
@@ -391,6 +415,17 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </main>
+
+      {/* Confirmation Modal */}
+      <AdminConfirmModal
+        isOpen={activeModal !== null}
+        action={activeModal?.action || null}
+        participant={activeModal?.participant || null}
+        isLoading={modalLoading}
+        errorMessage={modalError}
+        onClose={handleCloseModal}
+        onConfirm={handleConfirmModalAction}
+      />
     </div>
   )
 }
