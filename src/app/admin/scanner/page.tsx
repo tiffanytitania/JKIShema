@@ -43,6 +43,21 @@ export default function QRScannerPage() {
       try {
         setScanning(true)
         setScannerError('')
+
+        // 1. Check for Secure Context (HTTPS or localhost)
+        if (typeof window !== 'undefined' && window.isSecureContext === false) {
+          setScannerError('Kamera memerlukan koneksi aman (HTTPS). Akses website menggunakan URL HTTPS (https://) agar browser mengizinkan akses kamera.')
+          setScanning(false)
+          return
+        }
+
+        // 2. Check for getUserMedia API support
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setScannerError('Browser ini tidak mendukung akses kamera atau fitur kamera diblokir karena koneksi belum aman (HTTPS).')
+          setScanning(false)
+          return
+        }
+
         await html5Qrcode.start(
           { facingMode: 'environment' },
           {
@@ -53,8 +68,32 @@ export default function QRScannerPage() {
           onScanFailure
         )
       } catch (err: any) {
-        setScannerError('Gagal mengakses kamera HP. Pastikan izin kamera telah diberikan.')
         setScanning(false)
+        const errMsg = err?.message || String(err)
+        const errName = err?.name || ''
+
+        if (
+          errName === 'NotAllowedError' ||
+          errName === 'PermissionDeniedError' ||
+          errMsg.includes('Permission denied') ||
+          errMsg.includes('NotAllowedError')
+        ) {
+          setScannerError('Izin akses kamera ditolak. Silakan izinkan akses kamera di pengaturan browser/HP Anda lalu coba lagi.')
+        } else if (
+          errName === 'NotFoundError' ||
+          errName === 'DevicesNotFoundError' ||
+          errMsg.includes('NotFoundError')
+        ) {
+          setScannerError('Tidak ada kamera belakang yang terdeteksi pada perangkat ini.')
+        } else if (
+          errName === 'NotReadableError' ||
+          errName === 'TrackStartError' ||
+          errMsg.includes('NotReadableError')
+        ) {
+          setScannerError('Kamera sedang digunakan oleh aplikasi lain atau sistem kamera sedang sibuk.')
+        } else {
+          setScannerError(`Gagal mengakses kamera: ${errMsg || 'Pastikan izin kamera telah diberikan.'}`)
+        }
       }
     }
 
@@ -76,7 +115,7 @@ export default function QRScannerPage() {
     // Extract token if it's a URL or raw string
     let token = decodedText.trim()
     if (token.includes('/ticket/')) {
-      token = token.split('/ticket/').pop() || token
+      token = token.split('/ticket/').pop()?.split('?')[0]?.split('#')[0]?.replace(/\/$/, '') || token
     }
 
     try {
@@ -145,9 +184,15 @@ export default function QRScannerPage() {
       {/* Main Scanner Container */}
       <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
         {scannerError ? (
-          <div className="bg-red-900/40 border border-red-500/50 p-6 rounded-2xl text-center space-y-3">
+          <div className="bg-red-900/40 border border-red-500/50 p-6 rounded-2xl text-center space-y-4 max-w-sm">
             <span className="text-3xl">⚠️</span>
             <p className="text-sm text-red-200 font-medium">{scannerError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition shadow"
+            >
+              🔄 Coba Akses Kamera Lagi
+            </button>
           </div>
         ) : (
           <div className="w-full max-w-sm overflow-hidden rounded-3xl border-2 border-emerald-500/50 shadow-2xl bg-black relative">

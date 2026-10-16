@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import TicketCard from '@/components/TicketCard'
 
 interface ParticipantFormItem {
   full_name: string
@@ -112,32 +113,24 @@ export default function RegisterPage() {
 
   if (successData) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white max-w-xl w-full p-8 rounded-3xl shadow-xl border border-slate-100 space-y-6">
-          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 py-12">
+        <div className="bg-white max-w-xl w-full p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-100 space-y-6">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow-inner">
             ✓
           </div>
           <div className="text-center space-y-2">
+            <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">
+              Christmas Celebration JKI Shema
+            </span>
             <h1 className="text-2xl font-black text-slate-900">Pendaftaran Berhasil!</h1>
             <p className="text-sm text-slate-600">
-              Sebanyak <strong className="text-slate-900">{successData.length} orang</strong> telah terdaftar untuk Christmas Celebration JKI Shema.
+              Sebanyak <strong className="text-slate-900">{successData.length} orang</strong> telah terdaftar. Simpan atau unduh QR Code tiket Anda di bawah ini untuk ditunjukkan kepada panitia saat kedatangan di lokasi acara.
             </p>
           </div>
 
-          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
             {successData.map((item, idx) => (
-              <div key={item.id || idx} className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-900 text-sm">{item.full_name}</span>
-                  {item.is_child && (
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Anak</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500">WA: {item.whatsapp_number}</p>
-                <div className="font-mono text-xs bg-white p-2 rounded-lg border border-slate-200 text-blue-900 break-all select-all">
-                  Kode QR: {item.qr_token}
-                </div>
-              </div>
+              <TicketCard key={item.id || item.qr_token || idx} participant={item} />
             ))}
           </div>
 

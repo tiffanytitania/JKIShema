@@ -16,18 +16,23 @@ export default function AdminLoginPage() {
     setErrorMsg('')
     setLoading(true)
 
-    const res = await signIn('credentials', {
-      username,
-      password,
-      redirect: false,
-    })
+    try {
+      const res = await signIn('credentials', {
+        username,
+        password,
+        redirect: false,
+      })
 
-    setLoading(false)
+      setLoading(false)
 
-    if (res?.error) {
-      setErrorMsg('Username atau Password salah.')
-    } else {
-      window.location.href = '/admin'
+      if (res?.error) {
+        setErrorMsg('Username atau Password salah.')
+      } else {
+        window.location.href = '/admin'
+      }
+    } catch {
+      setLoading(false)
+      setErrorMsg('Terjadi kesalahan saat memproses login.')
     }
   }
 
@@ -46,7 +51,7 @@ export default function AdminLoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} action="#" className="space-y-4">
           <div className="space-y-1">
             <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">Username</label>
             <input

@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { ChurchStatus } from '@prisma/client'
-import { sendWhatsAppMessage } from './whatsapp.service'
+import { sendWhatsAppTicketQr } from './whatsapp.service'
 import crypto from 'crypto'
 
 export interface SingleParticipantInput {
@@ -102,10 +102,11 @@ export async function registerBatchParticipants(inputs: SingleParticipantInput[]
       },
     })
 
-    // Send Mock WA QR Message
-    await sendWhatsAppMessage(
+    // Send Mock WA QR Media Message
+    await sendWhatsAppTicketQr(
       participant.whatsapp_number,
-      `Halo ${participant.full_name}, berikut adalah QR Code tiket masuk Christmas Celebration JKI Shema Anda:\nhttps://jkishema.com/ticket/${qr_token}`
+      participant.full_name,
+      qr_token
     )
 
     createdParticipants.push(participant)
