@@ -99,6 +99,36 @@ export default function AdminDashboardPage() {
     }
   }
 
+  const handleCancelParticipant = async (participantId: string, name: string) => {
+    if (
+      !confirm(
+        `Apakah Anda yakin ingin membatalkan pendaftaran untuk "${name}"?\n\nKuota pendaftaran online akan otomatis dipulihkan kembali.`
+      )
+    ) {
+      return
+    }
+
+    try {
+      const res = await fetch('/api/admin/participants', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participant_id: participantId }),
+      })
+
+      if (res.ok) {
+        setActionMsg(`✓ Pendaftaran "${name}" berhasil dibatalkan! Kuota telah dipulihkan.`)
+        fetchStats()
+        fetchParticipants()
+        setTimeout(() => setActionMsg(''), 4000)
+      } else {
+        const data = await res.json()
+        alert(`Gagal: ${data.error}`)
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`)
+    }
+  }
+
   const handleExportCSV = () => {
     window.open('/api/admin/export', '_blank')
   }
@@ -333,12 +363,20 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         {p.status === 'REGISTERED' ? (
-                          <button
-                            onClick={() => handleManualCheckIn(p.id, p.full_name)}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow transition"
-                          >
-                            Check-In Manual
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleManualCheckIn(p.id, p.full_name)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] px-3 py-1.5 rounded-lg shadow transition"
+                            >
+                              Check-In Manual
+                            </button>
+                            <button
+                              onClick={() => handleCancelParticipant(p.id, p.full_name)}
+                              className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] px-2.5 py-1.5 rounded-lg shadow transition"
+                            >
+                              Batalkan
+                            </button>
+                          </div>
                         ) : (
                           <span className="font-mono text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded">
                             {p.qr_token.slice(0, 8)}...

@@ -64,3 +64,29 @@ export async function getParticipants({ search, status }: GetParticipantsParams)
     orderBy: { created_at: 'desc' },
   })
 }
+
+export async function cancelParticipant(participantId: string) {
+  const participant = await db.participant.findUnique({
+    where: { id: participantId },
+  })
+
+  if (!participant) {
+    throw new Error('Peserta tidak ditemukan.')
+  }
+
+  if (participant.status === 'CANCELLED') {
+    throw new Error('Peserta ini sudah dibatalkan sebelumnya.')
+  }
+
+  if (participant.status === 'CHECKED_IN') {
+    throw new Error('Peserta yang sudah Check-In tidak dapat dibatalkan.')
+  }
+
+  return await db.participant.update({
+    where: { id: participantId },
+    data: {
+      status: 'CANCELLED',
+    },
+  })
+}
+

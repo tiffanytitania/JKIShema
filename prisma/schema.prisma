@@ -51,7 +51,7 @@ model Participant {
   checked_in_at     DateTime?
   created_at        DateTime           @default(now())
 
-  @@unique([full_name, whatsapp_number])
+  @@index([full_name, whatsapp_number])
 }
 
 model SystemConfig {

@@ -8,6 +8,51 @@ if (typeof global.TextDecoder === 'undefined') {
   global.TextDecoder = TextDecoder as any
 }
 
+if (typeof global.Request === 'undefined') {
+  class MockRequest {
+    url: string
+    method: string
+    body: any
+    headers: Map<string, string>
+    constructor(input: any, init?: any) {
+      this.url = typeof input === 'string' ? input : input?.url || 'http://localhost'
+      this.method = init?.method || 'GET'
+      this.body = init?.body
+      this.headers = new Map(Object.entries(init?.headers || {}))
+    }
+    async json() {
+      return typeof this.body === 'string' ? JSON.parse(this.body) : this.body
+    }
+    async text() {
+      return typeof this.body === 'string' ? this.body : JSON.stringify(this.body)
+    }
+  }
+  global.Request = MockRequest as any
+}
+
+if (typeof global.Response === 'undefined') {
+  class MockResponse {
+    body: any
+    status: number
+    headers: Map<string, string>
+    constructor(body?: any, init?: any) {
+      this.body = body
+      this.status = init?.status || 200
+      this.headers = new Map(Object.entries(init?.headers || {}))
+    }
+    async json() {
+      return typeof this.body === 'string' ? JSON.parse(this.body) : this.body
+    }
+    async text() {
+      return typeof this.body === 'string' ? this.body : JSON.stringify(this.body)
+    }
+    static json(data: any, init?: any) {
+      return new MockResponse(data, init)
+    }
+  }
+  global.Response = MockResponse as any
+}
+
 if (typeof window !== 'undefined' && typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = function () {
     return {

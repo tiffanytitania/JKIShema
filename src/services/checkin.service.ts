@@ -55,6 +55,10 @@ export async function processManualCheckIn(participantId: string) {
     throw new Error('Peserta tidak ditemukan.')
   }
 
+  if (participant.status === 'CANCELLED') {
+    throw new Error('Peserta yang dibatalkan tidak dapat di-check-in.')
+  }
+
   return await db.participant.update({
     where: { id: participantId },
     data: {

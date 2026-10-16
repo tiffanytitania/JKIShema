@@ -88,4 +88,37 @@ describe('Check-In Service', () => {
       data: expect.objectContaining({ status: 'CHECKED_IN' }),
     })
   })
+
+  it('should return CANCELLED result and not update status when scanning a CANCELLED participant QR code', async () => {
+    const mockCancelledParticipant = {
+      id: 'p777',
+      full_name: 'Budi Batal',
+      status: 'CANCELLED',
+      qr_token: 'cancelled-qr-777',
+    };
+
+    (db.participant.findUnique as jest.Mock).mockResolvedValue(mockCancelledParticipant)
+
+    const result = await processCheckInByToken('cancelled-qr-777')
+
+    expect(result.resultCode).toBe('CANCELLED')
+    expect(result.message).toContain('dibatalkan')
+    expect(result.participant?.status).toBe('CANCELLED')
+    expect(db.participant.update).not.toHaveBeenCalled()
+  })
+
+  it('should reject manual check-in if participant has status CANCELLED', async () => {
+    const mockCancelledParticipant = {
+      id: 'p777',
+      full_name: 'Budi Batal',
+      status: 'CANCELLED',
+    };
+
+    (db.participant.findUnique as jest.Mock).mockResolvedValue(mockCancelledParticipant)
+
+    await expect(processManualCheckIn('p777')).rejects.toThrow(
+      'Peserta yang dibatalkan tidak dapat di-check-in.'
+    )
+    expect(db.participant.update).not.toHaveBeenCalled()
+  })
 })

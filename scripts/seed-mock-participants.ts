@@ -101,26 +101,34 @@ const mockData = [
 async function insertMock() {
   console.log('Inserting 10 mock participants to database...')
   for (const item of mockData) {
-    const res = await db.participant.upsert({
+    const existing = await db.participant.findFirst({
       where: {
-        full_name_whatsapp_number: {
-          full_name: item.full_name,
-          whatsapp_number: item.whatsapp_number,
-        },
-      },
-      update: {
-        status: item.status as any,
-        checked_in_at: item.checked_in_at,
-      },
-      create: {
-        ...item,
-        church_status: item.church_status as any,
-        status: item.status as any,
-        registration_type: item.registration_type as any,
-        qr_token: crypto.randomUUID(),
-        is_wa_opt_in: true,
+        full_name: item.full_name,
+        whatsapp_number: item.whatsapp_number,
       },
     })
+
+    let res
+    if (existing) {
+      res = await db.participant.update({
+        where: { id: existing.id },
+        data: {
+          status: item.status as any,
+          checked_in_at: item.checked_in_at,
+        },
+      })
+    } else {
+      res = await db.participant.create({
+        data: {
+          ...item,
+          church_status: item.church_status as any,
+          status: item.status as any,
+          registration_type: item.registration_type as any,
+          qr_token: crypto.randomUUID(),
+          is_wa_opt_in: true,
+        },
+      })
+    }
     console.log(`Inserted: ${res.full_name} (${res.status}) [QR: ${res.qr_token.slice(0, 8)}]`)
   }
 
